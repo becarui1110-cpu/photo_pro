@@ -23,9 +23,8 @@ function arrayBufferToBase64(buf: ArrayBuffer) {
   return btoa(binary);
 }
 
-type GeminiPart =
-  | { text: string }
-  | { inlineData: { mimeType: string; data: string } };
+type InlineData = { mimeType: string; data: string };
+type GeminiPart = { text: string } | { inlineData: InlineData };
 
 type GeminiResponse = {
   candidates?: Array<{
@@ -33,6 +32,20 @@ type GeminiResponse = {
   }>;
   error?: { message?: string };
 };
+
+// ✅ Type guard sans `any`
+function isInlineDataPart(part: GeminiPart): part is { inlineData: InlineData } {
+  if (typeof part !== "object" || part === null) return false;
+  if (!("inlineData" in part)) return false;
+
+  const inline = (part as { inlineData?: unknown }).inlineData;
+  if (typeof inline !== "object" || inline === null) return false;
+
+  const data = (inline as { data?: unknown }).data;
+  const mimeType = (inline as { mimeType?: unknown }).mimeType;
+
+  return typeof data === "string" && typeof mimeType === "string";
+}
 
 export async function POST(req: Request) {
   try {
@@ -70,8 +83,6 @@ export async function POST(req: Request) {
 
     const b64 = arrayBufferToBase64(await image.arrayBuffer());
 
-    // REST: generateContent with text + inlineData (image editing)
-    // Endpoint + modèle d’après la doc Gemini API Nano Banana  [oai_citation:2‡Google AI for Developers](https://ai.google.dev/gemini-api/docs/image-generation)
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       model
     )}:generateContent`;
@@ -101,14 +112,20 @@ export async function POST(req: Request) {
       body: JSON.stringify(body),
     });
 
-    const text = await res.text();
+    const raw = await res.text();
     let data: GeminiResponse | null = null;
+
     try {
-      data = JSON.parse(text) as GeminiResponse;
+      data = JSON.parse(raw) as GeminiResponse;
     } catch {
-      // si Google renvoie autre chose (rare), on remonte le texte
-      if (!res.ok) return json({ ok: false, error: `Erreur Gemini: ${text}` }, 500);
-      return json({ ok: false, error: "Réponse Gemini non-JSON inattendue." }, 500);
+      // Réponse non JSON (proxy/timeout/etc.)
+      return json(
+        {
+          ok: false,
+          error: `Réponse Gemini non-JSON (HTTP ${res.status}). Début: ${raw.slice(0, 180)}`,
+        },
+        500
+      );
     }
 
     if (!res.ok) {
@@ -117,21 +134,20 @@ export async function POST(req: Request) {
     }
 
     const parts = data?.candidates?.[0]?.content?.parts || [];
-    const imgPart = parts.find(
-      (p): p is { inlineData: { mimeType: string; data: string } } =>
-        typeof (p as any)?.inlineData?.data === "string"
-    );
+    const imgPart = parts.find(isInlineDataPart);
 
     if (!imgPart?.inlineData?.data) {
-      return json({
-        ok: false,
-        error: "Gemini n’a pas renvoyé d’image (inlineData manquant).",
-      }, 500);
+      return json(
+        { ok: false, error: "Gemini n’a pas renvoyé d’image (inlineData manquant)." },
+        500
+      );
     }
 
-    // En pratique Gemini renvoie souvent image/png
     const mime = imgPart.inlineData.mimeType || "image/png";
-    return json({ ok: true, dataUrl: `data:${mime};base64,${imgPart.inlineData.data}` }, 200);
+    return json(
+      { ok: true, dataUrl: `data:${mime};base64,${imgPart.inlineData.data}` },
+      200
+    );
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue";
     return json({ ok: false, error: message }, 500);
