@@ -13,13 +13,11 @@ export default function AdminPanelPage() {
       setLoading(true);
       setError("");
       const res = await fetch(`/api/generate-link?duration=${minutes}`);
-      if (!res.ok) throw new Error("Erreur lors de la génération du lien");
-      const data = (await res.json()) as { link: string };
+      const data = (await res.json()) as { ok: boolean; link?: string; error?: string };
+      if (!res.ok || !data.ok || !data.link) throw new Error(data.error || "Erreur");
       setLink(data.link);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Erreur inconnue";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setLoading(false);
     }
@@ -27,7 +25,7 @@ export default function AdminPanelPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white p-8 flex items-center justify-center">
-      <div className="bg-slate-900/60 p-8 rounded-2xl max-w-lg w-full space-y-4 shadow-xl">
+      <div className="bg-slate-900/60 p-8 rounded-2xl max-w-lg w-full space-y-4 shadow-xl border border-slate-800">
         <h1 className="text-2xl font-bold text-center">🎟️ Générer un lien d’accès</h1>
 
         <div className="flex items-center gap-2 justify-center">
@@ -60,12 +58,7 @@ export default function AdminPanelPage() {
         {link && (
           <div className="bg-slate-800 p-3 rounded break-all text-sm">
             <p className="text-slate-400 mb-1">Lien généré :</p>
-            <a
-              href={link}
-              target="_blank"
-              rel="noreferrer"
-              className="text-emerald-400 underline break-all"
-            >
+            <a href={link} target="_blank" rel="noreferrer" className="text-emerald-400 underline break-all">
               {link}
             </a>
           </div>
