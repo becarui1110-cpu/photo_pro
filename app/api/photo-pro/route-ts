@@ -1,0 +1,81 @@
+// app/api/photo-pro/route.ts
+export const runtime = "edge";
+
+import OpenAI from "openai";
+
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
+}
+
+/**
+ * Prompt “nickel” pour photo pro.
+ * 👉 Garde ça côté serveur (pas dans le client).
+ */
+function buildPrompt(options?: { background?: string; style?: string }) {
+  const background = options?.background || "studio neutral light gray";
+  const style = options?.style || "clean corporate headshot";
+
+  return `
+Transform the provided photo into a professional headshot.
+
+Hard requirements:
+- Keep the same person identity (face, features) and keep them realistic.
+- Improve lighting, color balance, sharpness, and skin tones naturally (no plastic look).
+- Remove distractions, clean background, and make it ${background}.
+- Outfit: keep current outfit if suitable; otherwise subtle professional attire (blazer/shirt) without changing identity.
+- Framing: head and shoulders, centered, professional composition.
+- Style: ${style}, photorealistic, high quality.
+
+Do NOT:
+- Change age, gender, ethnicity, or facial structure.
+- Add logos, text, watermarks.
+- Over-smooth skin or change hairstyle dramatically.
+`.trim();
+}
+
+export async function POST(req: Request) {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return json({ ok: false, error: "OPENAI_API_KEY missing" }, 500);
+
+    const form = await req.formData();
+    const file = form.get("image");
+
+    if (!(file instanceof File)) {
+      return json({ ok: false, error: "Missing image file (field name: image)" }, 400);
+    }
+
+    // Options facultatives (tu peux aussi les supprimer si tu veux garder 100% fixe)
+    const background = (form.get("background") as string | null) ?? undefined;
+    const style = (form.get("style") as string | null) ?? undefined;
+
+    const openai = new OpenAI({ apiKey });
+
+    // ✅ Image edit / transformation (pas besoin de mask)
+    // Docs: images/edits + model gpt-image-1  [oai_citation:1‡OpenAI Platform](https://platform.openai.com/docs/guides/image-generation)
+    const result = await openai.images.edit({
+      model: "gpt-image-1",
+      image: [file],
+      prompt: buildPrompt({ background, style }),
+      // Qualité / fidélité :
+      input_fidelity: "high",
+      // Tu peux changer la taille si tu veux, mais 1024 est un bon compromis
+      size: "1024x1024",
+    });
+
+    const b64 = result.data?.[0]?.b64_json;
+    if (!b64) return json({ ok: false, error: "No image returned" }, 500);
+
+    const dataUrl = `data:image/png;base64,${b64}`;
+    return json({ ok: true, dataUrl });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return json({ ok: false, error: message }, 500);
+  }
+}
