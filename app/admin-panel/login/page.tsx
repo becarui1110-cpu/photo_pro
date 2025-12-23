@@ -12,9 +12,7 @@ export default function AdminPanelLoginPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (code.trim() === ADMIN_CODE) {
-      document.cookie = `admin_code=${ADMIN_CODE}; Path=/; Max-Age=${
-        60 * 60 * 24
-      }`;
+      document.cookie = `admin_code=${ADMIN_CODE}; Path=/; Max-Age=${60 * 60 * 24}`;
       window.location.href = "/admin-panel";
     } else {
       setError("Code invalide");
@@ -25,9 +23,10 @@ export default function AdminPanelLoginPage() {
     <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
       <form
         onSubmit={handleSubmit}
-        className="bg-slate-900/60 p-6 rounded-xl space-y-4 w-full max-w-sm"
+        className="bg-slate-900/60 p-6 rounded-xl space-y-4 w-full max-w-sm border border-slate-800"
       >
         <h1 className="text-xl font-bold">Accès admin</h1>
+
         <div className="flex gap-2">
           <input
             value={code}
@@ -45,7 +44,9 @@ export default function AdminPanelLoginPage() {
             {show ? "Cacher" : "Voir"}
           </button>
         </div>
+
         {error && <p className="text-red-400 text-sm">{error}</p>}
+
         <button
           type="submit"
           className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-semibold py-2 rounded"
