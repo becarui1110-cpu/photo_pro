@@ -28,12 +28,14 @@ export default function HomePage() {
       setBeforeUrl("");
       return;
     }
+
     const url = URL.createObjectURL(f);
     setBeforeUrl(url);
   }
 
   async function run() {
     if (!file) return;
+
     try {
       setLoading(true);
       setError("");
@@ -45,11 +47,26 @@ export default function HomePage() {
       fd.append("style", style);
 
       const res = await fetch("/api/photo-pro", { method: "POST", body: fd });
-      const data = (await res.json()) as ApiResult;
+
+      // ✅ IMPORTANT: lire en texte d'abord (sinon "Unexpected token ..." si HTML/texte)
+      const text = await res.text();
+
+      let data: ApiResult;
+      try {
+        data = JSON.parse(text) as ApiResult;
+      } catch {
+        throw new Error(
+          `Réponse API non-JSON (status ${res.status}). Début: ${text.slice(
+            0,
+            200
+          )}`
+        );
+      }
 
       if (!res.ok || !data.ok) {
-        throw new Error(!data.ok ? data.error : "Erreur API");
+        throw new Error(!data.ok ? data.error : `Erreur API (status ${res.status})`);
       }
+
       setAfterUrl(data.dataUrl);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur inconnue");
@@ -182,7 +199,7 @@ export default function HomePage() {
             </button>
 
             {error && (
-              <div className="bg-red-600/30 border border-red-700/40 rounded-lg p-3 text-sm text-red-100">
+              <div className="bg-red-600/30 border border-red-700/40 rounded-lg p-3 text-sm text-red-100 whitespace-pre-wrap">
                 {error}
               </div>
             )}
