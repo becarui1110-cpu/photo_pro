@@ -29,8 +29,27 @@ function json(payload: unknown, status = 200) {
   });
 }
 
-function resolveSiteUrl() {
-  return (process.env.SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+/**
+ * ✅ Résout l'URL du site:
+ * 1) SITE_URL si défini (recommandé en prod)
+ * 2) Sinon déduit depuis la requête (x-forwarded-host/proto ou host)
+ * 3) Fallback localhost
+ */
+function resolveSiteUrl(req: Request) {
+  const envUrl = process.env.SITE_URL?.trim();
+  if (envUrl) return envUrl.replace(/\/$/, "");
+
+  const host =
+    req.headers.get("x-forwarded-host") ??
+    req.headers.get("host");
+
+  const proto =
+    req.headers.get("x-forwarded-proto") ??
+    "http";
+
+  if (host) return `${proto}://${host}`.replace(/\/$/, "");
+
+  return "http://localhost:3000";
 }
 
 export async function GET(req: Request) {
@@ -38,12 +57,16 @@ export async function GET(req: Request) {
   if (!secret) return json({ ok: false, error: "TOKEN_SECRET missing" }, 500);
 
   const url = new URL(req.url);
-  const minutes = Math.max(1, Number(url.searchParams.get("duration") || "60"));
+  const minutesRaw = Number(url.searchParams.get("duration") || "60");
+  const minutes = Number.isFinite(minutesRaw) ? Math.max(1, minutesRaw) : 60;
+
   const expiresAt = Date.now() + minutes * 60 * 1000;
 
   const sig = await sign(secret, String(expiresAt));
   const token = `${expiresAt}.${sig}`;
 
-  const link = `${resolveSiteUrl()}/?token=${encodeURIComponent(token)}`;
+  const siteUrl = resolveSiteUrl(req);
+  const link = `${siteUrl}/?token=${encodeURIComponent(token)}`;
+
   return json({ ok: true, link });
 }
