@@ -1,4 +1,3 @@
-// app/page.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -15,7 +14,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Options simples (facultatif)
   const [background, setBackground] = useState("studio neutral light gray");
   const [style, setStyle] = useState("clean corporate headshot");
 
@@ -25,6 +23,7 @@ export default function HomePage() {
     setError("");
     setAfterUrl("");
     setFile(f);
+
     if (!f) {
       setBeforeUrl("");
       return;
@@ -45,16 +44,12 @@ export default function HomePage() {
       fd.append("background", background);
       fd.append("style", style);
 
-      const res = await fetch("/api/photo-pro", {
-        method: "POST",
-        body: fd,
-      });
-
+      const res = await fetch("/api/photo-pro", { method: "POST", body: fd });
       const data = (await res.json()) as ApiResult;
+
       if (!res.ok || !data.ok) {
         throw new Error(!data.ok ? data.error : "Erreur API");
       }
-
       setAfterUrl(data.dataUrl);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur inconnue");
@@ -75,7 +70,6 @@ export default function HomePage() {
 
   return (
     <main className="min-h-dvh bg-slate-950 text-slate-50">
-      {/* Header */}
       <header className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -90,7 +84,7 @@ export default function HomePage() {
               <img
                 src="/dreem_w.png"
                 alt="Dreem"
-                className="h-8 w-auto object-contain"
+                className="h-9 w-auto object-contain"
                 style={{ display: "block" }}
               />
             </a>
@@ -100,7 +94,8 @@ export default function HomePage() {
                 Photo Pro • Agent IA
               </p>
               <p className="text-sm sm:text-base font-semibold truncate">
-                Transforme ta photo en <span className="text-emerald-300">photo professionnelle</span>
+                Transforme ta photo en{" "}
+                <span className="text-emerald-300">photo professionnelle</span>
               </p>
             </div>
           </div>
@@ -112,10 +107,9 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* Body */}
       <div className="mx-auto max-w-6xl px-4 py-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* LEFT: upload */}
+          {/* LEFT */}
           <section className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-4">
             <h2 className="text-sm font-semibold">1) Ta photo</h2>
 
@@ -159,7 +153,6 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* Options prompt (safe) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs text-slate-400">Background</label>
@@ -195,7 +188,7 @@ export default function HomePage() {
             )}
           </section>
 
-          {/* RIGHT: result */}
+          {/* RIGHT */}
           <section className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-4">
             <h2 className="text-sm font-semibold">2) Résultat</h2>
 
@@ -222,7 +215,7 @@ export default function HomePage() {
             </button>
 
             <p className="text-xs text-slate-500">
-              Astuce : utilise une photo bien éclairée, visage visible, sans filtre.
+              Astuce : photo bien éclairée, visage visible, sans filtre.
             </p>
           </section>
         </div>
