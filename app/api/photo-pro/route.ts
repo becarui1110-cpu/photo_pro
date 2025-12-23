@@ -15,13 +15,27 @@ function clampText(input: unknown, maxLen: number) {
   return s ? s.slice(0, maxLen) : "";
 }
 
-async function safeReadJson(res: Response): Promise<unknown> {
+type OpenAIImagesEditsSuccess = {
+  data: Array<{ b64_json?: string }>;
+};
+
+type OpenAIError = {
+  error?: { message?: string };
+  message?: string;
+};
+
+// ce que safeReadJson peut renvoyer (soit JSON, soit texte brut)
+type SafeJson =
+  | OpenAIImagesEditsSuccess
+  | OpenAIError
+  | { __raw: string };
+
+async function safeReadJson(res: Response): Promise<SafeJson> {
   const text = await res.text();
   try {
-    return JSON.parse(text);
+    return JSON.parse(text) as OpenAIImagesEditsSuccess | OpenAIError;
   } catch {
-    // pas du JSON (HTML / texte)
-    return { __raw: text.slice(0, 500) };
+    return { __raw: text.slice(0, 800) };
   }
 }
 
@@ -45,7 +59,8 @@ export async function POST(req: Request) {
       return json({ ok: false, error: "Image trop lourde (max ~12MB)." }, 400);
     }
 
-    const background = clampText(form.get("background"), 120) || "studio neutral light gray";
+    const background =
+      clampText(form.get("background"), 120) || "studio neutral light gray";
     const style = clampText(form.get("style"), 120) || "clean corporate headshot";
 
     const prompt =
@@ -73,24 +88,29 @@ export async function POST(req: Request) {
       body: out,
     });
 
-    const data = (await safeReadJson(res)) as any;
+    const data = await safeReadJson(res);
 
     if (!res.ok) {
       const msg =
-        data?.error?.message ||
-        data?.message ||
-        (typeof data?.__raw === "string" ? data.__raw : null) ||
-        "Erreur OpenAI (images/edits).";
+        ("error" in data && data.error?.message) ||
+        ("message" in data && typeof data.message === "string" ? data.message : "") ||
+        ("__raw" in data ? data.__raw : "") ||
+        `Erreur OpenAI (status ${res.status}).`;
 
       return json({ ok: false, error: msg, debug: `OpenAI status=${res.status}` }, 500);
     }
 
-    const b64 = data?.data?.[0]?.b64_json;
-    if (!b64) {
+    // success case
+    if (!("data" in data) || !Array.isArray(data.data)) {
       return json(
-        { ok: false, error: "Réponse OpenAI invalide (pas d'image).", debug: JSON.stringify(data).slice(0, 500) },
+        { ok: false, error: "Réponse OpenAI invalide (structure inattendue).", debug: JSON.stringify(data).slice(0, 400) },
         500
       );
+    }
+
+    const b64 = data.data[0]?.b64_json;
+    if (!b64) {
+      return json({ ok: false, error: "Réponse OpenAI invalide (pas d'image b64)." }, 500);
     }
 
     return json({ ok: true, dataUrl: `data:image/png;base64,${b64}` }, 200);
