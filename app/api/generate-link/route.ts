@@ -6,26 +6,11 @@ const encoder = new TextEncoder();
 function toBase64Url(buffer: ArrayBuffer) {
   const bytes = new Uint8Array(buffer);
   let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export async function GET(request: Request) {
-  const secret = process.env.TOKEN_SECRET;
-  if (!secret) {
-    return new Response(
-      JSON.stringify({ error: "TOKEN_SECRET manquant dans Vercel" }),
-      { status: 500, headers: { "content-type": "application/json" } }
-    );
-  }
-
-  const { searchParams } = new URL(request.url);
-  const durationMinutes = Number(searchParams.get("duration") || "60");
-
-  const expiresAt = Date.now() + durationMinutes * 60 * 1000;
-
+async function sign(secret: string, message: string) {
   const key = await crypto.subtle.importKey(
     "raw",
     encoder.encode(secret),
@@ -33,22 +18,32 @@ export async function GET(request: Request) {
     false,
     ["sign"]
   );
+  const signed = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
+  return toBase64Url(signed);
+}
 
-  const signatureBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(String(expiresAt))
-  );
-
-  const signature = toBase64Url(signatureBuffer);
-
-  const token = `${expiresAt}.${signature}`;
-
-  const siteUrl = "https://ltr.dreem.ch";
-  const link = `${siteUrl}/?token=${token}`;
-
-  return new Response(JSON.stringify({ link }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
+function json(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
   });
+}
+
+function resolveSiteUrl() {
+  return (process.env.SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+}
+
+export async function GET(req: Request) {
+  const secret = process.env.TOKEN_SECRET;
+  if (!secret) return json({ ok: false, error: "TOKEN_SECRET missing" }, 500);
+
+  const url = new URL(req.url);
+  const minutes = Math.max(1, Number(url.searchParams.get("duration") || "60"));
+  const expiresAt = Date.now() + minutes * 60 * 1000;
+
+  const sig = await sign(secret, String(expiresAt));
+  const token = `${expiresAt}.${sig}`;
+
+  const link = `${resolveSiteUrl()}/?token=${encodeURIComponent(token)}`;
+  return json({ ok: true, link });
 }
