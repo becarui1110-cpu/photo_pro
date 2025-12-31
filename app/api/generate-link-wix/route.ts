@@ -1,4 +1,4 @@
-// app/api/generate-link/route.ts
+// app/api/generate-link-wix/route.ts
 export const runtime = "edge";
 
 const encoder = new TextEncoder();
@@ -25,36 +25,42 @@ async function sign(secret: string, message: string) {
 function json(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      // CORS Wix
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET,POST,OPTIONS",
+      "access-control-allow-headers": "Content-Type",
+    },
   });
 }
 
+export async function OPTIONS() {
+  return json({ ok: true }, 200);
+}
+
 /**
- * ✅ Résout l'URL du site:
- * 1) SITE_URL si défini (recommandé en prod)
- * 2) Sinon déduit depuis la requête (x-forwarded-host/proto ou host)
- * 3) Fallback localhost
+ * ✅ En prod: on FORCE SITE_URL
+ * Mets dans Vercel: SITE_URL = https://photopro.dreem.ch
  */
-function resolveSiteUrl(req: Request) {
+function resolveSiteUrlStrict() {
   const envUrl = process.env.SITE_URL?.trim();
-  if (envUrl) return envUrl.replace(/\/$/, "");
-
-  const host =
-    req.headers.get("x-forwarded-host") ??
-    req.headers.get("host");
-
-  const proto =
-    req.headers.get("x-forwarded-proto") ??
-    "http";
-
-  if (host) return `${proto}://${host}`.replace(/\/$/, "");
-
-  return "http://localhost:3000";
+  if (!envUrl) return null;
+  return envUrl.replace(/\/$/, "");
 }
 
 export async function GET(req: Request) {
   const secret = process.env.TOKEN_SECRET;
   if (!secret) return json({ ok: false, error: "TOKEN_SECRET missing" }, 500);
+
+  const siteUrl = resolveSiteUrlStrict();
+  if (!siteUrl) {
+    return json(
+      { ok: false, error: "SITE_URL missing (ex: https://photopro.dreem.ch)" },
+      500
+    );
+  }
 
   const url = new URL(req.url);
   const minutesRaw = Number(url.searchParams.get("duration") || "60");
@@ -65,8 +71,11 @@ export async function GET(req: Request) {
   const sig = await sign(secret, String(expiresAt));
   const token = `${expiresAt}.${sig}`;
 
-  const siteUrl = resolveSiteUrl(req);
   const link = `${siteUrl}/?token=${encodeURIComponent(token)}`;
 
-  return json({ ok: true, link });
+  return json({
+    ok: true,
+    link,
+    result: link, // ✅ pratique pour Wix
+  });
 }
