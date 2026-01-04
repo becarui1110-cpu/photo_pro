@@ -1,5 +1,5 @@
 // app/api/generate-link-wix/route.ts
-export const runtime = "edge";
+export const runtime = "experimental-edge"; // ✅ Next.js 15 friendly
 
 const encoder = new TextEncoder();
 
@@ -22,60 +22,74 @@ async function sign(secret: string, message: string) {
   return toBase64Url(signed);
 }
 
-function json(payload: unknown, status = 200) {
+type Ok = { ok: true; link: string; result: string };
+type Fail = { ok: false; error: string };
+
+function json(payload: Ok | Fail, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      // CORS Wix
+      "cache-control": "no-store, max-age=0",
+      // ✅ CORS (Wix)
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "GET,POST,OPTIONS",
-      "access-control-allow-headers": "Content-Type",
+      "access-control-allow-headers": "Content-Type, Authorization",
     },
   });
 }
 
 export async function OPTIONS() {
-  return json({ ok: true }, 200);
+  return json({ ok: true, link: "", result: "" } as Ok, 200);
 }
 
 /**
- * ✅ En prod: on FORCE SITE_URL
- * Mets dans Vercel: SITE_URL = https://photopro.dreem.ch
+ * ✅ En prod: FORCE SITE_URL
+ * Dans Vercel: SITE_URL = https://photopro.dreem.ch
  */
-function resolveSiteUrlStrict() {
+function resolveSiteUrlStrict(): string | null {
   const envUrl = process.env.SITE_URL?.trim();
   if (!envUrl) return null;
   return envUrl.replace(/\/$/, "");
 }
 
-export async function GET(req: Request) {
+function parseMinutes(req: Request) {
+  const url = new URL(req.url);
+  const minutesRaw = Number(url.searchParams.get("duration") || "60");
+  return Number.isFinite(minutesRaw) ? Math.max(1, minutesRaw) : 60;
+}
+
+async function buildLink(minutes: number) {
   const secret = process.env.TOKEN_SECRET;
-  if (!secret) return json({ ok: false, error: "TOKEN_SECRET missing" }, 500);
+  if (!secret) return { ok: false, error: "TOKEN_SECRET missing" } as const;
 
   const siteUrl = resolveSiteUrlStrict();
   if (!siteUrl) {
-    return json(
-      { ok: false, error: "SITE_URL missing (ex: https://photopro.dreem.ch)" },
-      500
-    );
+    return {
+      ok: false,
+      error: "SITE_URL missing (ex: https://photopro.dreem.ch)",
+    } as const;
   }
 
-  const url = new URL(req.url);
-  const minutesRaw = Number(url.searchParams.get("duration") || "60");
-  const minutes = Number.isFinite(minutesRaw) ? Math.max(1, minutesRaw) : 60;
-
   const expiresAt = Date.now() + minutes * 60 * 1000;
-
   const sig = await sign(secret, String(expiresAt));
   const token = `${expiresAt}.${sig}`;
 
   const link = `${siteUrl}/?token=${encodeURIComponent(token)}`;
+  return { ok: true, link, result: link } as const;
+}
 
-  return json({
-    ok: true,
-    link,
-    result: link, // ✅ pratique pour Wix
-  });
+/** ✅ GET : Wix Webhook peut appeler en GET */
+export async function GET(req: Request) {
+  const minutes = parseMinutes(req);
+  const result = await buildLink(minutes);
+  return json(result as Ok | Fail, result.ok ? 200 : 500);
+}
+
+/** ✅ POST : Wix Webhook peut appeler en POST */
+export async function POST(req: Request) {
+  // Si tu veux lire un JSON body Wix un jour, tu peux le faire ici.
+  const minutes = parseMinutes(req);
+  const result = await buildLink(minutes);
+  return json(result as Ok | Fail, result.ok ? 200 : 500);
 }
