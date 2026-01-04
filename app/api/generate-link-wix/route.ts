@@ -1,5 +1,5 @@
 // app/api/generate-link-wix/route.ts
-export const runtime = "experimental-edge"; // ✅ Next.js 15 friendly
+export const runtime = "edge"; // ✅ Next.js 15: 'edge' | 'nodejs' uniquement
 
 const encoder = new TextEncoder();
 
@@ -31,7 +31,7 @@ function json(payload: Ok | Fail, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store, max-age=0",
-      // ✅ CORS (Wix)
+      // ✅ CORS Wix
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "GET,POST,OPTIONS",
       "access-control-allow-headers": "Content-Type, Authorization",
@@ -79,16 +79,13 @@ async function buildLink(minutes: number) {
   return { ok: true, link, result: link } as const;
 }
 
-/** ✅ GET : Wix Webhook peut appeler en GET */
 export async function GET(req: Request) {
   const minutes = parseMinutes(req);
   const result = await buildLink(minutes);
   return json(result as Ok | Fail, result.ok ? 200 : 500);
 }
 
-/** ✅ POST : Wix Webhook peut appeler en POST */
 export async function POST(req: Request) {
-  // Si tu veux lire un JSON body Wix un jour, tu peux le faire ici.
   const minutes = parseMinutes(req);
   const result = await buildLink(minutes);
   return json(result as Ok | Fail, result.ok ? 200 : 500);
